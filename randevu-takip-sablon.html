@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>[SALON ADI] - Randevu Takip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+/* MARKA RENKLERİ — isteğe bağlı: her müşteride bu 4 rengi (--orange, --purple,
+   --orange-dk, --purple-dk) salonun kendi renklerine göre değiştirebilirsiniz.
+   Değiştirmezseniz varsayılan turuncu/mor tema kalır. */
+:root{
+  --ink:#1a1512; --cream:#fdf6ec; --orange:#ff6b35; --orange-dk:#e0501c;
+  --purple:#7b5ea7; --purple-dk:#5f4685; --green:#3a9d5c; --red:#d4453a;
+  --gray:#8a8178; --line:3px solid var(--ink);
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  font-family:'Space Grotesk',sans-serif; background:var(--cream); color:var(--ink);
+  min-height:100vh; overflow-x:auto;
+}
+.hidden{display:none !important;}
+button{font-family:inherit; cursor:pointer;}
+input,select{font-family:inherit; font-size:16px;}
+
+/* ---------- LOGIN ---------- */
+#login{
+  min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding:24px;
+}
+#login h1{
+  font-family:'Kalam',cursive; font-size:2.2rem; color:var(--purple-dk);
+  transform:rotate(-2deg);
+}
+#personelGrid{display:flex; flex-wrap:wrap; gap:14px; justify-content:center; max-width:600px;}
+.personel-btn{
+  background:#fff; border:var(--line); padding:16px 22px; font-weight:700; font-size:1.05rem;
+  box-shadow:4px 4px 0 var(--ink); transition:transform .1s;
+}
+.personel-btn:hover{transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink);}
+.personel-btn.active-sel{background:var(--orange); color:#fff;}
+#pinBox{display:flex; gap:10px; align-items:center;}
+#pinInput{
+  border:var(--line); padding:12px 16px; width:160px; letter-spacing:6px; text-align:center; font-size:1.2rem;
+}
+.btn-primary{
+  background:var(--orange); color:#fff; border:var(--line); padding:12px 24px; font-weight:700;
+  box-shadow:4px 4px 0 var(--ink);
+}
+.btn-primary:hover{transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink);}
+.btn-secondary{
+  background:#fff; border:var(--line); padding:10px 18px; font-weight:700; box-shadow:3px 3px 0 var(--ink);
+}
+#loginErr{color:var(--red); font-weight:700; display:none;}
+
+/* ---------- APP ---------- */
+#app{min-height:100vh;}
+header{
+  background:var(--ink); color:var(--cream); padding:14px 20px; display:flex; align-items:center;
+  justify-content:space-between; flex-wrap:wrap; gap:10px; position:sticky; top:0; z-index:50; border-bottom:var(--line);
+}
+header h2{font-family:'Kalam',cursive; font-size:1.5rem; color:var(--orange);}
+.header-right{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+#dateInput{border:2px solid var(--cream); background:var(--ink); color:var(--cream); padding:8px 10px; font-weight:700;}
+.pill{background:var(--purple); color:#fff; padding:8px 14px; font-weight:700; font-size:.9rem; border:2px solid var(--ink);}
+.icon-btn{
+  background:var(--cream); color:var(--ink); border:2px solid var(--cream); width:38px; height:38px; font-size:1.1rem;
+}
+
+#gridWrap{overflow:auto; padding:20px; max-height:calc(100vh - 90px);}
+table{border-collapse:collapse; table-layout:fixed;}
+th,td{border:2px solid var(--ink);}
+thead th{
+  background:var(--purple); color:#fff; padding:8px 4px; font-weight:700; white-space:nowrap; position:sticky; top:0; z-index:20;
+  width:84px; font-size:.82rem; text-align:center;
+}
+.time-col{
+  background:var(--ink); color:var(--cream); font-weight:700; padding:6px 8px; text-align:center; white-space:nowrap;
+  position:sticky; left:0; z-index:10; width:64px; max-width:64px; font-size:.82rem;
+}
+thead .corner{position:sticky; left:0; top:0; z-index:30; background:var(--ink); width:64px; max-width:64px;}
+td.slot{width:84px; height:44px; padding:0; vertical-align:top; position:relative; cursor:pointer; background:#fff;}
+td.slot:hover{background:#fff4e8;}
+.slot-empty::after{content:"+"; color:#cfc6ba; font-size:1.3rem; display:flex; align-items:center; justify-content:center; height:100%;}
+.slot-past{background:#f1ede4 !important; cursor:not-allowed;}
+.slot-past::after{content:"" !important;}
+.appt-block{
+  height:100%; width:100%; padding:4px 5px; color:#fff; font-size:.68rem; font-weight:700; line-height:1.2;
+  overflow:hidden; display:flex; flex-direction:column; justify-content:center;
+}
+.appt-block small{font-weight:400; font-size:.62rem; display:block;}
+.status-bekliyor{background:var(--orange);}
+.status-geldi{background:var(--green);}
+.status-tamamlandi{background:#6b6258;}
+.status-iptal{background:#e7e0d5; color:#a89f93; text-decoration:line-through;}
+.block-slot{background:repeating-linear-gradient(45deg,#3a3530,#3a3530 8px,#4a4238 8px,#4a4238 16px); color:#cfc6ba;}
+.appt-continue{opacity:.85;}
+
+/* ---------- MODAL ---------- */
+.overlay{
+  position:fixed; inset:0; background:rgba(26,21,18,.6); display:flex; align-items:center; justify-content:center;
+  z-index:100; padding:16px;
+}
+.modal{
+  background:var(--cream); border:var(--line); box-shadow:8px 8px 0 var(--ink); max-width:520px; width:100%;
+  max-height:90vh; overflow-y:auto; padding:24px;
+}
+.modal h3{font-family:'Kalam',cursive; font-size:1.4rem; color:var(--purple-dk); margin-bottom:16px;}
+.field{margin-bottom:14px;}
+.field label{display:block; font-weight:700; font-size:.85rem; margin-bottom:5px;}
+.field input, .field select, .field textarea{
+  width:100%; border:2px solid var(--ink); padding:9px 10px; background:#fff;
+}
+.row2{display:flex; gap:10px;}
+.row2 .field{flex:1;}
+.hizmet-row{border:2px dashed var(--gray); padding:12px; margin-bottom:10px; position:relative;}
+.hizmet-row .remove-row{position:absolute; top:8px; right:8px; background:var(--red); color:#fff; border:none; width:22px; height:22px; font-weight:700;}
+.modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:18px; flex-wrap:wrap;}
+.status-btns{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;}
+.status-btns button{border:2px solid var(--ink); padding:8px 14px; font-weight:700; background:#fff;}
+.status-btns button.on{background:var(--ink); color:#fff;}
+.warn{background:#fff3cd; border:2px solid #e0a800; padding:10px; font-weight:700; font-size:.85rem; margin-bottom:12px;}
+.quick-menu{display:flex; flex-direction:column; gap:10px;}
+.quick-menu button{padding:14px; font-weight:700; border:var(--line); background:#fff; box-shadow:3px 3px 0 var(--ink);}
+
+/* ---------- ADMIN ---------- */
+#personelListAdmin{display:flex; flex-direction:column; gap:8px; margin-bottom:16px;}
+.padmin-item{display:flex; gap:8px; align-items:center; border:2px solid var(--ink); padding:8px 10px;}
+.padmin-item span{flex:1; font-weight:700;}
+.padmin-item button{background:var(--red); color:#fff; border:none; padding:5px 10px; font-weight:700;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login">
+  <h1>[SALON ADI] Randevu Takip</h1>
+  <div id="personelGrid"></div>
+  <div id="pinBox" class="hidden">
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="PIN">
+    <button class="btn-primary" id="girisBtn">Giriş Yap</button>
+  </div>
+  <div id="loginErr">Hatalı PIN, tekrar dene.</div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="hidden">
+  <header>
+    <h2>[SALON ADI]</h2>
+    <div class="header-right">
+      <span class="pill" id="whoami"></span>
+      <input type="date" id="dateInput">
+      <span class="pill" id="dayLabel"></span>
+      <button class="icon-btn" id="adminBtn" title="Personel Yönet">⚙</button>
+      <button class="icon-btn" id="logoutBtn" title="Çıkış">⏻</button>
+    </div>
+  </header>
+  <div id="gridWrap">
+    <table id="grid"></table>
+  </div>
+</div>
+
+<script>
+/* ====== FIREBASE CONFIG — HER MÜŞTERİDE bu bloğu o salonun kendi Firebase
+   projesinin bilgileriyle değiştirin (Firebase Console > Proje Ayarları >
+   Genel > SDK kurulumu ve yapılandırması). Her müşteri kendi ayrı Firebase
+   projesini kullanmalı — verileri asla karışmaz. ====== */
+const firebaseConfig = {
+  apiKey: "BURAYA_API_KEY",
+  authDomain: "BURAYA_PROJE_ID.firebaseapp.com",
+  projectId: "BURAYA_PROJE_ID",
+  storageBucket: "BURAYA_PROJE_ID.firebasestorage.app",
+  messagingSenderId: "BURAYA_SENDER_ID",
+  appId: "BURAYA_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const HIZMETLER = {
+  'Kesim':45,'Fön':30,'Kaş':15,'Bıyık':15,'Boya':90,'Balyaj':180,'Manikür':45,'Pedikür':45,'Ağda':30,'Diğer':30
+};
+const ACILIS = '08:30', KAPANIS = '20:30'; // son slot başlangıcı
+
+function timeToMin(t){const [h,m]=t.split(':').map(Number); return h*60+m;}
+function minToTime(m){const h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0');}
+function genSlots(){
+  const out=[]; let m=timeToMin(ACILIS);
+  while(m<=timeToMin(KAPANIS)){out.push(minToTime(m)); m+=30;}
+  return out;
+}
+const SLOTS = genSlots();
+function uid(){return 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+
+let currentUser = null; // {id, ad}
+let selectedPersonelId = null;
+let personelList = [];
+let randevuMap = {}; // key: personelId|HH:MM -> appt object (start) ; separate coverage map
+let coverageMap = new Map(); // personelId|HH:MM -> owning appointment (start or continuation)
+let selectedDate = new Date().toISOString().slice(0,10);
+let unsubRandevu = null;
+
+/* ---------- LOGIN FLOW ---------- */
+db.collection('personel').where('aktif','==',true).orderBy('ad').get().then(snap=>{
+  const wrap = document.getElementById('personelGrid');
+  wrap.innerHTML='';
+  snap.forEach(doc=>{
+    const p = {id:doc.id, ...doc.data()};
+    const b = document.createElement('button');
+    b.className='personel-btn'; b.textContent=p.ad;
+    b.onclick=()=>{
+      document.querySelectorAll('.personel-btn').forEach(x=>x.classList.remove('active-sel'));
+      b.classList.add('active-sel');
+      selectedPersonelId = p.id;
+      document.getElementById('pinBox').classList.remove('hidden');
+      document.getElementById('loginErr').style.display='none';
+      document.getElementById('pinInput').value=''; document.getElementById('pinInput').focus();
+    };
+    wrap.appendChild(b);
+  });
+  if(snap.empty){
+    wrap.innerHTML = '<p>Henüz personel eklenmemiş. <br>Konsoldan "personel" koleksiyonuna elle bir kayıt ekleyin: <b>ad</b> (string), <b>pin</b> (string), <b>aktif</b> (true).</p>';
+  }
+});
+
+document.getElementById('girisBtn').onclick = doLogin;
+document.getElementById('pinInput').addEventListener('keydown', e=>{if(e.key==='Enter') doLogin();});
+function doLogin(){
+  if(!selectedPersonelId) return;
+  const pin = document.getElementById('pinInput').value.trim();
+  db.collection('personel').doc(selectedPersonelId).get().then(doc=>{
+    const d = doc.data();
+    if(d.pin === pin){
+      currentUser = {id:doc.id, ad:d.ad, yonetici: !!d.yonetici};
+      localStorage.setItem('randevu_user', JSON.stringify(currentUser));
+      startApp();
+    } else {
+      document.getElementById('loginErr').style.display='block';
+    }
+  });
+}
+// auto-login if session saved
+const saved = localStorage.getItem('randevu_user');
+if(saved){
+  currentUser = JSON.parse(saved);
+  db.collection('personel').doc(currentUser.id).get().then(doc=>{
+    if(doc.exists){
+      currentUser.yonetici = !!doc.data().yonetici;
+      localStorage.setItem('randevu_user', JSON.stringify(currentUser));
+      document.getElementById('whoami').textContent = currentUser.ad + (currentUser.yonetici? ' (Yönetici)' : '');
+      document.getElementById('adminBtn').style.display = currentUser.yonetici ? '' : 'none';
+    }
+  });
+}
+
+function updateDayLabel(){
+  const GUNLER = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const d = new Date(selectedDate+'T00:00:00');
+  document.getElementById('dayLabel').textContent = GUNLER[d.getDay()];
+}
+function startApp(){
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('whoami').textContent = currentUser.ad + (currentUser.yonetici? ' (Yönetici)' : '');
+  document.getElementById('adminBtn').style.display = currentUser.yonetici ? '' : 'none';
+  document.getElementById('dateInput').value = selectedDate;
+  updateDayLabel();
+  loadPersonelAndGrid();
+  cleanupOldRecords();
+}
+async function cleanupOldRecords(){
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-2); cutoff.setHours(0,0,0,0);
+  try{
+    const snap = await db.collection('randevular').where('tarih','<', firebase.firestore.Timestamp.fromDate(cutoff)).get();
+    if(snap.empty) return;
+    const batch = db.batch();
+    snap.forEach(doc=> batch.delete(doc.ref));
+    await batch.commit();
+  }catch(e){ console.error('Eski kayıt temizleme hatası:', e); }
+}
+if(currentUser) startApp();
+
+document.getElementById('logoutBtn').onclick=()=>{
+  localStorage.removeItem('randevu_user'); location.reload();
+};
+document.getElementById('dateInput').onchange = e=>{
+  selectedDate = e.target.value; updateDayLabel(); loadPersonelAndGrid();
+};
+
+/* ---------- GRID ---------- */
+function loadPersonelAndGrid(){
+  db.collection('personel').where('aktif','==',true).orderBy('ad').onSnapshot(snap=>{
+    personelList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    subscribeRandevular();
+  });
+}
+
+function subscribeRandevular(){
+  if(unsubRandevu) unsubRandevu();
+  const start = new Date(selectedDate+'T00:00:00');
+  const end = new Date(selectedDate+'T23:59:59');
+  unsubRandevu = db.collection('randevular')
+    .where('tarih','>=', start)
+    .where('tarih','<=', end)
+    .onSnapshot(snap=>{
+      randevuMap = {}; coverageMap = new Map();
+      snap.forEach(doc=>{
+        const d = {id:doc.id, ...doc.data()};
+        if(d.durum==='iptal') return;
+        const startTime = d.tarih.toDate();
+        const startStr = startTime.toTimeString().slice(0,5);
+        const key = d.hizmetVerenPersonel+'|'+startStr;
+        randevuMap[key] = d;
+        let m = timeToMin(startStr);
+        const endM = m + (d.sure||30);
+        while(m < endM){
+          coverageMap.set(d.hizmetVerenPersonel+'|'+minToTime(m), d);
+          m += 30;
+        }
+      });
+      renderGrid();
+    });
+}
+
+function isPastSlot(slot){
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  if(selectedDate !== todayStr) return selectedDate < todayStr;
+  return timeToMin(slot) + 30 <= (now.getHours()*60 + now.getMinutes());
+}
+function renderGrid(){
+  const table = document.getElementById('grid');
+  let html = '<thead><tr><th class="corner">Saat</th>';
+  personelList.forEach(p=> html += `<th>${p.ad}</th>`);
+  html += '</tr></thead><tbody>';
+  SLOTS.forEach(slot=>{
+    html += `<tr><td class="time-col">${slot}</td>`;
+    personelList.forEach(p=>{
+      const key = p.id+'|'+slot;
+      const appt = randevuMap[key];
+      if(appt){
+        const cls = appt.tip==='blok' ? 'block-slot' : 'status-'+appt.durum;
+        html += `<td class="slot" data-key="${key}" data-personel="${p.id}" data-slot="${slot}">
+          <div class="appt-block ${cls}">
+            ${appt.tip==='blok' ? (appt.notlar||'Kapalı') : `${appt.musteriAdi}<small>${appt.hizmet}</small>`}
+          </div></td>`;
+      } else if(coverageMap.has(key)){
+        const owner = coverageMap.get(key);
+        const cls = owner.tip==='blok' ? 'block-slot' : 'status-'+owner.durum;
+        html += `<td class="slot" data-key="${key}" data-personel="${p.id}" data-slot="${slot}">
+          <div class="appt-block appt-continue ${cls}"></div></td>`;
+      } else {
+        html += `<td class="slot slot-empty${isPastSlot(slot)?' slot-past':''}" data-personel="${p.id}" data-slot="${slot}"></td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+
+  table.querySelectorAll('td.slot').forEach(td=>{
+    td.onclick = ()=>{
+      const personelId = td.dataset.personel, slot = td.dataset.slot;
+      const key = personelId+'|'+slot;
+      const appt = randevuMap[key];
+      if(appt){ openDetail(appt); }
+      else if(coverageMap.has(key)){
+        openDetail(coverageMap.get(key));
+      } else if(isPastSlot(slot)){
+        showModal(`<h3>Geçmiş saat</h3><p>Bu saat dilimi geçmişte kaldığı için yeni randevu eklenemez.</p>
+          <div class="modal-actions"><button class="btn-primary" id="pastOk">Tamam</button></div>`);
+        document.getElementById('pastOk').onclick = closeModal;
+      } else {
+        openQuickMenu(personelId, slot);
+      }
+    };
+  });
+}
+
+/* ---------- QUICK MENU (empty slot) ---------- */
+function openQuickMenu(personelId, slot){
+  showModal(`
+    <h3>${slot} — ${personelName(personelId)}</h3>
+    <div class="quick-menu">
+      <button id="qmRandevu">📅 Randevu Ekle</button>
+      <button id="qmKapat">🚫 Slot Kapat</button>
+      <button class="btn-secondary" id="qmCancel">Vazgeç</button>
+    </div>
+  `);
+  document.getElementById('qmRandevu').onclick = ()=> openAppointmentForm(personelId, slot);
+  document.getElementById('qmKapat').onclick = ()=> openBlockForm(personelId, slot);
+  document.getElementById('qmCancel').onclick = closeModal;
+}
+function personelName(id){ const p=personelList.find(x=>x.id===id); return p?p.ad:'—'; }
+
+/* ---------- APPOINTMENT FORM ---------- */
+function openAppointmentForm(personelId, slot){
+  const groupId = uid();
+  showModal(`
+    <h3>Yeni Randevu</h3>
+    <div class="field"><label>Müşteri Adı</label><input id="fMusteri" placeholder="Ad Soyad"></div>
+    <div class="field"><label>Telefon</label><input id="fTelefon" placeholder="05551234567"></div>
+    <div id="hizmetRows"></div>
+    <button type="button" class="btn-secondary" id="addRowBtn">+ Ek Hizmet Ekle</button>
+    <div class="field" style="margin-top:14px;"><label>Notlar (opsiyonel)</label><textarea id="fNotlar" rows="2"></textarea></div>
+    <div id="overlapWarn"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="cancelBtn">Vazgeç</button>
+      <button class="btn-primary" id="saveBtn">Kaydet</button>
+    </div>
+  `);
+  const rowsWrap = document.getElementById('hizmetRows');
+  let rowCount = 0;
+  function nextSaat(){
+    let latestEnd = null;
+    rowsWrap.querySelectorAll('.hizmet-row').forEach(r=>{
+      const s = r.querySelector('.rSaat').value, sure = parseInt(r.querySelector('.rSure').value,10)||0;
+      if(!s) return;
+      const end = timeToMin(s) + sure;
+      if(latestEnd===null || end>latestEnd) latestEnd = end;
+    });
+    if(latestEnd===null) return slot;
+    const rounded = Math.ceil(latestEnd/30)*30; // ızgara 30dk çizgilerine hizala
+    return minToTime(rounded);
+  }
+  function addRow(prePersonel, preSlot){
+    rowCount++;
+    const idx = rowCount;
+    const div = document.createElement('div');
+    div.className='hizmet-row'; div.dataset.idx=idx;
+    const initialSaat = preSlot || nextSaat();
+    div.innerHTML = `
+      ${idx>1?'<button type="button" class="remove-row">×</button>':''}
+      <div class="row2">
+        <div class="field"><label>Personel</label>
+          <select class="rPersonel">${personelList.map(p=>`<option value="${p.id}" ${p.id===prePersonel?'selected':''}>${p.ad}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Saat</label><input type="time" class="rSaat" value="${initialSaat}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Hizmet</label>
+          <select class="rHizmet">${Object.keys(HIZMETLER).map(h=>`<option value="${h}">${h}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Süre (dk)</label><input type="number" class="rSure" value="${HIZMETLER['Kesim']}" min="5" step="5"></div>
+      </div>
+    `;
+    rowsWrap.appendChild(div);
+    const hSel = div.querySelector('.rHizmet'), sInp = div.querySelector('.rSure');
+    hSel.onchange = ()=> sInp.value = HIZMETLER[hSel.value];
+    const rm = div.querySelector('.remove-row');
+    if(rm) rm.onclick = ()=> div.remove();
+  }
+  addRow(personelId, slot);
+  document.getElementById('addRowBtn').onclick = ()=> addRow(personelId, null);
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('saveBtn').onclick = async ()=>{
+    const musteriAdi = document.getElementById('fMusteri').value.trim();
+    const telefon = document.getElementById('fTelefon').value.trim();
+    const notlar = document.getElementById('fNotlar').value.trim();
+    if(!musteriAdi){ alert('Müşteri adı gerekli.'); return; }
+    const rows = [...rowsWrap.querySelectorAll('.hizmet-row')].map(r=>({
+      personelId: r.querySelector('.rPersonel').value,
+      saat: r.querySelector('.rSaat').value,
+      hizmet: r.querySelector('.rHizmet').value,
+      sure: parseInt(r.querySelector('.rSure').value,10)
+    }));
+    for(const row of rows){
+      if(!row.saat){ alert('Bir hizmet satırında saat boş bırakılmış.'); return; }
+      if(!row.sure || row.sure<=0 || isNaN(row.sure)){ alert('Bir hizmet satırında süre geçersiz. Lütfen kontrol edin.'); return; }
+    }
+    if(rows.some(r=>isPastSlot(r.saat))){ alert('Geçmiş bir saate randevu eklenemez.'); return; }
+    // overlap check: against existing grid AND between the new rows themselves
+    const conflicts = [];
+    const seenNew = {}; // personelId -> Set of occupied minutes among the rows being added now
+    for(const row of rows){
+      const m1 = timeToMin(row.saat), m2 = m1+row.sure;
+      seenNew[row.personelId] = seenNew[row.personelId] || new Set();
+      for(let m=m1; m<m2; m+=30){
+        if(coverageMap.has(row.personelId+'|'+minToTime(m))) conflicts.push(`${personelName(row.personelId)} ${row.saat}`);
+        if(seenNew[row.personelId].has(m)) conflicts.push(`${personelName(row.personelId)} ${row.saat} (aynı formda çakışma)`);
+        seenNew[row.personelId].add(m);
+      }
+    }
+    if(conflicts.length){
+      document.getElementById('overlapWarn').innerHTML = `<div class="warn">Çakışma var: ${conflicts.join(', ')}. Bu saatlerde zaten randevu/blok bulunduğu için kaydedilemiyor — farklı bir saat veya personel seçin.</div>`;
+      return;
+    }
+    const batch = db.batch();
+    try{
+      rows.forEach(row=>{
+        const [h,m] = row.saat.split(':').map(Number);
+        const dt = new Date(selectedDate+'T00:00:00'); dt.setHours(h,m,0,0);
+        const ref = db.collection('randevular').doc();
+        batch.set(ref, {
+          musteriAdi, telefon, tarih: firebase.firestore.Timestamp.fromDate(dt),
+          hizmet: row.hizmet, sure: row.sure, hizmetVerenPersonel: row.personelId,
+          ekleyenPersonel: currentUser.ad, durum:'bekliyor', notlar, randevuGrupId: groupId, tip:'randevu'
+        });
+      });
+      await batch.commit();
+      closeModal();
+    }catch(err){
+      alert('Kaydetme hatası: ' + err.message);
+      console.error(err);
+    }
+  };
+}
+
+/* ---------- BLOCK (Slot Kapat) FORM ---------- */
+function openBlockForm(personelId, slot){
+  showModal(`
+    <h3>Slot Kapat — ${personelName(personelId)}</h3>
+    <div class="row2">
+      <div class="field"><label>Başlangıç</label><input type="time" id="bStart" value="${slot}"></div>
+      <div class="field"><label>Bitiş</label><input type="time" id="bEnd" value="${minToTime(timeToMin(slot)+30)}"></div>
+    </div>
+    <div class="field"><label>Not (opsiyonel)</label><input id="bNot" placeholder="Mola, izin vb."></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="cancelBtn">Vazgeç</button>
+      <button class="btn-primary" id="blockSaveBtn">Kapat</button>
+    </div>
+  `);
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('blockSaveBtn').onclick = async ()=>{
+    const s = document.getElementById('bStart').value, e = document.getElementById('bEnd').value;
+    const not = document.getElementById('bNot').value.trim() || 'Kapalı';
+    const sure = timeToMin(e) - timeToMin(s);
+    if(sure<=0){ alert('Bitiş, başlangıçtan sonra olmalı.'); return; }
+    const [h,m] = s.split(':').map(Number);
+    const dt = new Date(selectedDate+'T00:00:00'); dt.setHours(h,m,0,0);
+    await db.collection('randevular').add({
+      musteriAdi:null, telefon:null, tarih: firebase.firestore.Timestamp.fromDate(dt),
+      hizmet:null, sure, hizmetVerenPersonel: personelId, ekleyenPersonel: currentUser.ad,
+      durum:'bekliyor', notlar: not, randevuGrupId: uid(), tip:'blok'
+    });
+    closeModal();
+  };
+}
+
+/* ---------- DETAIL / EDIT ---------- */
+function openDetail(appt){
+  const startStr = appt.tarih.toDate().toTimeString().slice(0,5);
+  if(appt.tip==='blok'){
+    showModal(`
+      <h3>Kapalı Slot — ${personelName(appt.hizmetVerenPersonel)}</h3>
+      <p><b>${startStr}</b> (${appt.sure} dk) — ${appt.notlar||''}</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="closeBtn">Kapat</button>
+        <button class="btn-primary" style="background:var(--red)" id="delBtn">Slotu Aç</button>
+      </div>
+    `);
+    document.getElementById('closeBtn').onclick = closeModal;
+    document.getElementById('delBtn').onclick = async ()=>{
+      await db.collection('randevular').doc(appt.id).delete(); closeModal();
+    };
+    return;
+  }
+  const statuses = ['bekliyor','geldi','tamamlandı','iptal'];
+  showModal(`
+    <h3>${appt.musteriAdi}</h3>
+    <p>${appt.telefon||''}</p>
+    <p><b>${appt.hizmet}</b> — ${personelName(appt.hizmetVerenPersonel)} — ${startStr} (${appt.sure} dk)</p>
+    ${appt.notlar?`<p><i>${appt.notlar}</i></p>`:''}
+    <p style="font-size:.8rem; color:var(--gray)">Ekleyen: ${appt.ekleyenPersonel}</p>
+    <div class="status-btns" id="statusBtns">
+      ${statuses.map(s=>`<button data-s="${s}" class="${appt.durum===s?'on':''}">${s}</button>`).join('')}
+    </div>
+    <div class="field"><label>Süreyi Düzenle (dk)</label><input type="number" id="editSure" value="${appt.sure}" min="5" step="5"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="closeBtn">Kapat</button>
+      <button class="btn-primary" id="updateSureBtn">Süreyi Güncelle</button>
+    </div>
+  `);
+  document.getElementById('closeBtn').onclick = closeModal;
+  document.querySelectorAll('#statusBtns button').forEach(b=>{
+    b.onclick = async ()=>{ await db.collection('randevular').doc(appt.id).update({durum:b.dataset.s}); closeModal(); };
+  });
+  document.getElementById('updateSureBtn').onclick = async ()=>{
+    const newSure = parseInt(document.getElementById('editSure').value,10);
+    await db.collection('randevular').doc(appt.id).update({sure:newSure}); closeModal();
+  };
+}
+
+/* ---------- MODAL HELPERS ---------- */
+function showModal(innerHtml){
+  closeModal();
+  const ov = document.createElement('div'); ov.className='overlay'; ov.id='activeOverlay';
+  ov.innerHTML = `<div class="modal">${innerHtml}</div>`;
+  ov.addEventListener('click', e=>{ if(e.target===ov) closeModal(); });
+  document.body.appendChild(ov);
+}
+function closeModal(){ const ov=document.getElementById('activeOverlay'); if(ov) ov.remove(); }
+
+/* ---------- ADMIN PANEL (personel yönetimi) ---------- */
+document.getElementById('adminBtn').onclick = ()=>{
+  if(!currentUser.yonetici){ alert('Bu panel sadece yöneticilere açık.'); return; }
+  showModal(`
+    <h3>Personel Yönet</h3>
+    <div id="personelListAdmin">Yükleniyor...</div>
+    <div class="row2">
+      <div class="field"><label>Ad</label><input id="newAd"></div>
+      <div class="field"><label>PIN</label><input id="newPin" maxlength="6"></div>
+    </div>
+    <div class="field"><label><input type="checkbox" id="newYonetici"> Yönetici yetkisi versin (Personel Yönet paneline erişebilsin)</label></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="closeBtn">Kapat</button>
+      <button class="btn-primary" id="addPersonelBtn">Ekle</button>
+    </div>
+  `);
+  document.getElementById('closeBtn').onclick = closeModal;
+  refreshAdminList();
+  document.getElementById('addPersonelBtn').onclick = async ()=>{
+    const ad = document.getElementById('newAd').value.trim();
+    const pin = document.getElementById('newPin').value.trim();
+    const yonetici = document.getElementById('newYonetici').checked;
+    if(!ad || !pin){ alert('Ad ve PIN gerekli.'); return; }
+    await db.collection('personel').add({ad, pin, aktif:true, yonetici});
+    document.getElementById('newAd').value=''; document.getElementById('newPin').value='';
+    document.getElementById('newYonetici').checked=false;
+    refreshAdminList();
+  };
+};
+function refreshAdminList(){
+  db.collection('personel').orderBy('ad').get().then(snap=>{
+    const wrap = document.getElementById('personelListAdmin');
+    if(!wrap) return;
+    wrap.innerHTML='';
+    snap.forEach(doc=>{
+      const p = doc.data();
+      const div = document.createElement('div'); div.className='padmin-item';
+      div.innerHTML = `<span>${p.ad} ${p.aktif?'':'(pasif)'} ${p.yonetici?'⭐ yönetici':''}</span>
+        <button class="btn-secondary toggleBtn">${p.aktif?'Pasifleştir':'Aktifleştir'}</button>
+        <button class="btn-secondary adminToggleBtn">${p.yonetici?'Yöneticiliği Kaldır':'Yönetici Yap'}</button>
+        <button class="delBtn">Sil</button>`;
+      div.querySelector('.toggleBtn').onclick = async ()=>{
+        await db.collection('personel').doc(doc.id).update({aktif:!p.aktif}); refreshAdminList();
+      };
+      div.querySelector('.adminToggleBtn').onclick = async ()=>{
+        if(doc.id===currentUser.id && p.yonetici){ alert('Kendi yöneticilik yetkinizi kaldıramazsınız.'); return; }
+        await db.collection('personel').doc(doc.id).update({yonetici:!p.yonetici}); refreshAdminList();
+      };
+      div.querySelector('.delBtn').onclick = async ()=>{
+        if(confirm(`${p.ad} silinsin mi?`)){ await db.collection('personel').doc(doc.id).delete(); refreshAdminList(); }
+      };
+      wrap.appendChild(div);
+    });
+  });
+}
+</script>
+</body>
+</html>
